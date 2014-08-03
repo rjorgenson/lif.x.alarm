@@ -2,29 +2,41 @@
 
 require 'lifx'
 require 'optparse'
-require 'whenever'
 
 options = {}
 
 parser = OptionParser.new do |opts|
   opts.banner = 'Usage: alarm.rb [options]'
   
-  options[:bulb] = nil
-  opts.on('-b BULB', '--bulb BULB', 'The label give to the bulb you wish to use to wake up') do |bulb|
+  options[:bulb] = 'all'
+  opts.on('-b BULB', '--bulb BULB', 'The label give to the bulb you wish to change - all by default') do |bulb|
     options[:bulb] = bulb
   end
   
-  options[:waketime] = '0700'
-  opts.on('-w TIME', '--waketime TIME', 'The local system time which you want to wake in 24 hour time - example: 0700') do |time|
-    options[:waketime] = time
+  options[:method] = nil
+  opts.on('-m METHOD', '--method METHOD', ['sunrise', 'poweron', 'poweroff', 'setcolor', 'setpower'], 'The method you wish to run') do |method|
+    options[:method] = method
   end
   
-  #softwake [delay]
+  options[:softwake] = false
+  opts.on('-S', '--softwake', 'Run sunrise sequence with delay, requires --delay option')
+    options[:softwake] = true
+  end
   
-  options[:color] = 'white'
-  opts.on('-C', '--color', ['white', 'green', 'orange', 'red'], 'The color to set the light to upon waking')
+  options[:delay] = 15
+  opts.on('-D', '--delay', 'Delay in minutes for the softwake - default 15 minutes') do |delay|
+    options[:delay] = delay
+  end
   
-  #fade [color]
+  options[:color] = '255,255,255'
+  opts.on('-C', '--color', 'The RGB value of the color to set the light to') do |color|
+    options[:color] = color
+  end
+  
+  options[:power] = 100
+  opts.on('-b', '--power', 'The power level you wish to set the bulb to[0-100] - 100 by default') do |power|
+    options[:power] = power
+  end
   
   opts.on_tail('-h', '--help', 'Show this help message') do
     puts opts
@@ -40,45 +52,92 @@ class Sunrise_Alarm
     client = LIFX::Client.lan
     @options = opts
     
-    #make sure we have a valid time of day
-    pattern = /([0-1][0-9]|2[0-3])([0-5][0-9])/
-    if !(pattern.match(@options[:waketime])) then
-      # error handling
-      puts  "#{@options[:waketime]} not a valid time"
-      exit
-    end
-    
     # make sure we have a valid bulb
-    if @options[:bulb] == nil then
-      #error handling
+    if @options[:bulb] == 'all' then
+      client.discover!
+      @lx = client.lights
+    elsif @options[:bulb] == nil then
       puts "Please specify a bulb with the -b option"
       exit
-    end
-    puts "Searching for Lif.x labeled #{@options[:bulb]}"
-    client.discover! do |c|
-      c.lights.with_label(@options[:bulb])
-    end
-    if client.lights.with_label(@options[:bulb]) then
-      @lx = client.lights.with_label(@options[:bulb])
     else
-      #error handling
-      puts "#{@options[:bulb]} not found"
+      puts "Searching for Lif.x labeled #{@options[:bulb]}"
+      client.discover! do |c|
+        c.lights.with_label(@options[:bulb])
+      end
+      if client.lights.with_label(@options[:bulb]) then
+        @lx = client.lights.with_label(@options[:bulb])
+      else
+        puts "#{@options[:bulb]} not found"
+      end
     end
-  end
-  
-  def ttw
-    now = Time.now
-    duration = 6 #difference between @options[:waketime] and now
-    return duration
   end
   
   def sunrise
-    #if @delay specified wake light from 0-100 over period specified
-    
-    # else wake light at @waketime to 100
-    @lx.turn_on
-    @lx.set_power(1)
+    if @options[:color] then
+      self.setcolor
+    end
+    if @options[:delay] then
+      @lx.set_power(0.0)
+      @lx.power_on
+      i = (@options[:power] / @option[:delay]).to_f * 100
+      t = i / @options[:delay].to_f
+      i.to_i.times do |p|
+        @lx.set_power( p.to_f/100 )
+        sleep(t)
+      end
+    else #turn on light now
+      puts "Turning on light #{@options[:bulb]}"
+      @lx.turn_on
+      @lx.set_power(@options[:power])
+    end
+  end
+  
+  def sunset
+    if @options[:color] then
+      self.setcolor
+    end
+    @lx.set_power(0.0)
+    @lx.power_on
+    i = (@options[:power] / @option[:delay]).to_f
+    t = i / @options[:delay].to_f
+    i.to_i.times do |p|
+      @lx.set_power( 1 - (p.to_f/100) )
+      sleep(t)
+    end
+  end
+  
+  def setcolor
+    @lx.set_color(@options[:color])
+  end
+  
+  def setpower
+    @lx.set_power((@options[:power] / 100).to_f)
+  end
+  
+  def poweron
+    @lx.power_on
+  end
+  
+  def poweroff
+    @lx.power_off
   end
 end
 
-alarm = Sunrise_Alarm.new(options)
+bulb = Sunrise_Alarm.new(options)
+
+case options[:method]
+when "sunrise"
+  bulb.sunrise
+when "sunset"
+  bulb.sunset
+when "poweron"
+  bulb.poweron
+when "poweroff"
+  bulb.poweroff
+when "setcolor"
+  bulb.setcolor
+when "setpower"
+  bulb.setpower
+else
+  puts "Please chose a method to run"
+end
