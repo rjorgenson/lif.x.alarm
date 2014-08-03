@@ -34,7 +34,7 @@ parser = OptionParser.new do |opts|
   end
   
   options[:power] = 100
-  opts.on('-b', '--power', 'The power level you wish to set the bulb to[0-100] - 100 by default') do |power|
+  opts.on('-p', '--power', 'The power level you wish to set the bulb to[0-100] - 100 by default') do |power|
     options[:power] = power
   end
   
