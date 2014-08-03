@@ -19,7 +19,7 @@ parser = OptionParser.new do |opts|
   end
   
   options[:softwake] = false
-  opts.on('-S', '--softwake', 'Run sunrise sequence with delay, requires --delay option')
+  opts.on('-S', '--softwake', 'Run sunrise sequence with delay, requires --delay option') do
     options[:softwake] = true
   end
   
