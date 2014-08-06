@@ -14,28 +14,23 @@ parser = OptionParser.new do |opts|
   end
   
   options[:method] = nil
-  opts.on('-m METHOD', '--method METHOD', ['sunrise', 'poweron', 'poweroff', 'setcolor', 'setpower'], 'The method you wish to run') do |method|
+  opts.on('-m METHOD', '--method METHOD', ['sunrise', 'sunset', 'poweron', 'poweroff', 'setcolor', 'setpower'], 'The method you wish to run') do |method|
     options[:method] = method
   end
   
-  options[:softwake] = false
-  opts.on('-S', '--softwake', 'Run sunrise sequence with delay, requires --delay option') do
-    options[:softwake] = true
+  options[:delay] = nil
+  opts.on('-D DELAY', '--delay DELAY', 'Delay in minutes for the for sunrise or sunset') do |delay|
+    options[:delay] = delay.to_i
   end
   
-  options[:delay] = 15
-  opts.on('-D', '--delay', 'Delay in minutes for the softwake - default 15 minutes') do |delay|
-    options[:delay] = delay
-  end
-  
-  options[:color] = '255,255,255'
-  opts.on('-C', '--color', 'The RGB value of the color to set the light to') do |color|
+  options[:color] = nil
+  opts.on('-C COLOR', '--color COLOR', 'The RGB value of the color to set the light to') do |color|
     options[:color] = color
   end
   
   options[:power] = 100
-  opts.on('-p', '--power', 'The power level you wish to set the bulb to[0-100] - 100 by default') do |power|
-    options[:power] = power
+  opts.on('-p POWER', '--power POWER', 'The power level you wish to set the bulb to[0-100] - 100 by default') do |power|
+    options[:power] = power.to_i
   end
   
   opts.on_tail('-h', '--help', 'Show this help message') do
@@ -55,6 +50,7 @@ class Sunrise_Alarm
     # make sure we have a valid bulb
     if @options[:bulb] == 'all' then
       client.discover!
+      sleep(5)
       @lx = client.lights
     elsif @options[:bulb] == nil then
       puts "Please specify a bulb with the -b option"
@@ -70,6 +66,17 @@ class Sunrise_Alarm
         puts "#{@options[:bulb]} not found"
       end
     end
+    if @options[:color] then
+      @options[:color] = LIFX::Color.rgb(@options[:color].split(",")[0].to_i, @options[:color].split(",")[1].to_i, @options[:color].split(",")[2].to_i)
+    else
+      if @options[:bulb] == 'all'
+        @lx.first do |light|
+          @options[:color] = light.color
+        end
+      else
+        @options[:color] = @lx.color
+      end
+    end
   end
   
   def sunrise
@@ -77,18 +84,23 @@ class Sunrise_Alarm
       self.setcolor
     end
     if @options[:delay] then
-      @lx.set_power(0.0)
-      @lx.power_on
-      i = (@options[:power] / @option[:delay]).to_f * 100
-      t = i / @options[:delay].to_f
-      i.to_i.times do |p|
-        @lx.set_power( p.to_f/100 )
+      self.setpower('off')
+      @lx.turn_on
+      t = (@options[:delay] * 60) / 100
+      @options[:power].to_i.times do |p|
+        if @options[:bulb] == 'all' then
+          @lx.each do |light|
+            light.set_color(light.color.with_brightness(p.to_f/100))
+          end
+        else
+          @lx.set_color(@lx.color.with_brightness(p.to_f/100))
+        end
+        puts p.to_f/100
+        puts t
         sleep(t)
       end
     else #turn on light now
-      puts "Turning on light #{@options[:bulb]}"
-      @lx.turn_on
-      @lx.set_power(@options[:power])
+      self.setpower(100)
     end
   end
   
@@ -96,12 +108,32 @@ class Sunrise_Alarm
     if @options[:color] then
       self.setcolor
     end
+    if @options[:delay] then
+      self.setpower(@options[:power])
+      @lx.turn_on
+      t = (@options[:delay] * 60) / 100
+      @options[:power].to_i.times do |p|
+        if @options[:bulb] == 'all' then
+          @lx.each do |light|
+            light.set_color(@options[:color].with_brightness(1 - (p.to_f/100)))
+          end
+        else
+          @lx.set_color(@options[:color].with_brightness(1 - (p.to_f/100)))
+        end
+        puts 1 - (p.to_f/100)
+        puts t
+        sleep(t)
+      end
+    else #turn on light now
+      self.setpower('off')
+    end
+    
     @lx.set_power(0.0)
     @lx.power_on
     i = (@options[:power] / @option[:delay]).to_f
     t = i / @options[:delay].to_f
     i.to_i.times do |p|
-      @lx.set_power( 1 - (p.to_f/100) )
+      @lx.set_power!( 1 - (p.to_f/100) )
       sleep(t)
     end
   end
@@ -110,16 +142,30 @@ class Sunrise_Alarm
     @lx.set_color(@options[:color])
   end
   
-  def setpower
-    @lx.set_power((@options[:power] / 100).to_f)
+  def setpower(level)
+    if @options[:bulb] == 'all' then
+      @lx.each do |light|
+        if level == 'off'
+          light.set_color(light.color.with_brightness(0.0))
+        else
+          light.set_color(light.color.with_brightness((100 / level).to_f))
+        end
+      end
+    else
+      if level == 'off'
+        @lx.set_color(@lx.color.with_brightness(0.0))
+      else
+        @lx.set_color(@lx.color.with_brightness((100 / level).to_f))
+      end
+    end
   end
   
   def poweron
-    @lx.power_on
+    @lx.turn_on
   end
   
   def poweroff
-    @lx.power_off
+    @lx.turn_off
   end
 end
 
