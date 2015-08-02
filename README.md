@@ -1,3 +1,5 @@
+Appears to be broken with current gem/firmware, not sure what changed, will look into in the future, sorry!
+
 ```
 Usage: alarm.rb [options]
         --bulb BULB                  The label give to the bulb you wish to change - all by default
